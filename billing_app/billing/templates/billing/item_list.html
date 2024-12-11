@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Billing Application</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f7f9fc;
+            color: #343a40;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border: none;
+        }
+        .btn-info {
+            background-color: #17a2b8;
+            border: none;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            border: none;
+        }
+        .btn {
+            border-radius: 20px;
+        }
+        .table {
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .table th {
+            background-color: #007bff;
+            color: white;
+            border: none;
+        }
+        .alert {
+            border-radius: 8px;
+        }
+        .layout {
+            display: flex;
+            gap: 20px;
+        }
+        .add-item {
+            flex: 1;
+            max-width: 300px;
+        }
+        .item-table {
+            flex: 3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4 text-primary">Billing Application</h1>
+
+        <div class="layout">
+            <!-- Add Item Form -->
+            <div class="card add-item">
+                <div class="card-header">Add New Item</div>
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        {{ form.as_p }}
+                        <button type="submit" name="add_item" class="btn btn-primary">Add Item</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Items Table -->
+            <div class="card item-table">
+                <div class="card-header">Item List</div>
+                <div class="card-body">
+                    <table class="table table-bordered" id="itemTable">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Quantity</th>
+                                <th>Expiry Date</th>
+                                <th>Days Until Expiry</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td>{{ item.name }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.expiry_date }}</td>
+                                <td>{{ item.days_until_expiry }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clear Table Button -->
+        <form method="POST" class="mt-4">
+            {% csrf_token %}
+            <button type="submit" name="clear_table" class="btn btn-danger w-100">Clear Table</button>
+        </form>
+
+        <!-- Check Bill Form -->
+        <div class="card mt-4">
+            <div class="card-header">Check Bill</div>
+            <div class="card-body">
+                <form method="POST">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-10">
+                            <input type="text" name="items" class="form-control" placeholder="Format: name:quantity,name:quantity">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" name="check_bill" class="btn btn-info">Check Bill</button>
+                        </div>
+                    </div>
+                </form>
+                {% if missing_items %}
+                    <div class="mt-3">
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            The following items are missing: {{ missing_items|join:", " }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if extra_items %}
+                    <div class="mt-3">
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            The following extra items were found: {{ extra_items|join:", " }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if not missing_items and not extra_items %}
+                    <div class="mt-3">
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            All items are correctly listed in the table.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function fetchNotifications() {
+            fetch('/check-notifications/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.notifications && data.notifications.length > 0) {
+                        data.notifications.forEach(notification => {
+                            alert(notification.message);
+                        });
+                    } 
+
+                    setTimeout(fetchNotifications, 1000);
+                })
+                .catch(error => {
+                    console.error('Error fetching notifications:', error);
+                    setTimeout(fetchNotifications, 1000);
+                });
+        }
+
+        fetchNotifications();
+
+        function fetchAndUpdateTable() {
+            fetch('/fetch-items/')
+                .then(response => response.json())
+                .then(data => {
+                    const tableBody = document.querySelector('#itemTable tbody');
+                    tableBody.innerHTML = '';
+
+                    data.forEach(item => {
+                        const expiryDate = new Date(item.expiry_date);
+                        const daysUntilExpiry = Math.ceil((expiryDate - new Date()) / (1000 * 60 * 60 * 24));
+
+                        const row = `
+                            <tr>
+                                <td>${item.name}</td>
+                                <td>${item.quantity}</td>
+                                <td>${item.expiry_date}</td>
+                                <td>${daysUntilExpiry >= 0 ? daysUntilExpiry : 'Expired'}</td>
+                            </tr>
+                        `;
+                        tableBody.insertAdjacentHTML('beforeend', row);
+                    });
+                })
+                .catch(error => console.error('Error fetching items:', error));
+        }
+
+        setInterval(fetchAndUpdateTable, 5000);
+        fetchAndUpdateTable();
+
+        function removeAlerts() {
+        // Select all divs with the class 'mt-3'
+        const alerts = document.querySelectorAll('.mt-3');
+
+        alerts.forEach(alert => {
+            // Set a timeout to remove each alert after 5 seconds
+            setTimeout(() => {
+                alert.remove();
+            }, 10000);
+        });
+    }
+
+    // Call the function when the DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', removeAlerts);
+    </script>
+</body>
+</html>
