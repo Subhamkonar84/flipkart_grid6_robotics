@@ -50,6 +50,18 @@ def fetch_exp_by_name(product_name):
         
         # Fetch the result
             row = cursor.fetchone()
+            if row[0]==0:
+                timezone = pytz.timezone('Asia/Kolkata')
+                current_datetime = datetime.now(timezone)
+                
+                # Add the number of days from row[0]
+                new_expiry_date = current_datetime - timedelta(days=1)
+                
+                # Format the new expiry date as only date (YYYY-MM-DD)
+                formatted_expiry_date = new_expiry_date.strftime("%Y-%m-%d")
+                print(formatted_expiry_date)
+                return formatted_expiry_date
+
 
 
         # If a row is returned, extract the expiry_date
@@ -62,7 +74,7 @@ def fetch_exp_by_name(product_name):
                 
                 # Format the new expiry date as only date (YYYY-MM-DD)
                 formatted_expiry_date = new_expiry_date.strftime("%Y-%m-%d")
-                
+                print(formatted_expiry_date)
                 return formatted_expiry_date
             
             else:
@@ -70,7 +82,7 @@ def fetch_exp_by_name(product_name):
                 return None  # Explicitly return None if no record is found
 
         except mysql.connector.Error as err:
-            print(f"Database error: {err}")
+            print(f"Database error: {err}")                             
             return None
 
         finally:
@@ -80,6 +92,7 @@ def fetch_exp_by_name(product_name):
             if conn:
                 conn.close()
     else:
+        product_namee=product_name[4:] if product_name.startswith('bad_') else product_name
         try:
             # Connect to the MySQL database
             conn = mysql.connector.connect(
@@ -97,7 +110,7 @@ def fetch_exp_by_name(product_name):
                 WHERE brand = %s
             """
             # Execute the query with the provided product name
-            cursor.execute(query, (product_name,))
+            cursor.execute(query, (product_namee,))
             
             # Fetch the result
             row = cursor.fetchone()
@@ -128,40 +141,44 @@ def run_check():
 
 def check_and_update_dict(new_data):
     # Persistent storage for old data
-    if not hasattr(check_and_update_dict, "old_data"):
-        check_and_update_dict.old_data = {}  # Initialize with an empty dictionary
+    try:
+        if not hasattr(check_and_update_dict, "old_data"):
+            check_and_update_dict.old_data = {}  # Initialize with an empty dictionary
 
-    old_data = check_and_update_dict.old_data
+        old_data = check_and_update_dict.old_data
 
-    if old_data == new_data:
-        return {}  # No changes
+        if old_data == new_data:
+            return {}  # No changes
 
-    # Identify the differences
+        # Identify the differences
 
-    updated_data = {}
-    for key, value in new_data.items():
-        if old_data.get(key) != value:  # Check if the value is different
-            updated_data[key] = value
+        updated_data = {}
+        for key, value in new_data.items():
+            if old_data.get(key) != value:  # Check if the value is different
+                updated_data[key] = value
 
-    # Update the stored old data
-    check_and_update_dict.old_data = new_data.copy()
-    for item_name, item_quantity in updated_data.items():
-        payload = {
-            "name": item_name,  
-            "quantity": int(item_quantity),
-            "expiry_date": str(fetch_exp_by_name(item_name))
-        }
-        
-        response = requests.post(
-            "http://127.0.0.1:8000/external-update/",
-            headers={"Content-Type": "application/json"},
-            json=payload
-        )
-        
-        if response.status_code == 200:
-            print(f"Data successfully sent for {item_name[4:] if item_name.startswith('bad_') else item_name}.")
-        else:
-            print(f"Failed to send data for {item_name[4:] if item_name.startswith('bad_') else item_name}. Status code: {response.status_code}")
+        # Update the stored old data
+        check_and_update_dict.old_data = new_data.copy()
+        for item_name, item_quantity in updated_data.items():
+            payload = {
+                "name": item_name,  
+                "quantity": int(item_quantity),
+                "expiry_date": str(fetch_exp_by_name(item_name))
+            }
+            
+            response = requests.post(
+                "http://127.0.0.1:8000/external-update/",
+                headers={"Content-Type": "application/json"},
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                print(f"Data successfully sent for {item_name[4:] if item_name.startswith('bad_') else item_name}.")
+            else:
+                print(f"Failed to send data for {item_name[4:] if item_name.startswith('bad_') else item_name}. Status code: {response.status_code}")
+    except Exception as e:
+         print(f"An error occurred: {e}")
+
 
     print(updated_data)
 
