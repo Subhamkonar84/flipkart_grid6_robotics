@@ -7,6 +7,11 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 from datetime import datetime
 from .models import Notification
+from django.shortcuts import render
+
+incorrect_quantities=[]
+missing_items=[]
+extra_items=[]
 
 @csrf_exempt
 def external_update_item(request):
@@ -28,15 +33,17 @@ def external_update_item(request):
             except ValueError:
                 return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
             
+            today = datetime.today().date()
+            if expiry_date < today:
+                Notification.objects.create(message=f'The item "{name[4:] if name.startswith('bad_') else name}" is expired and has an expired date: {expiry_date}.')
+                return JsonResponse({'error': f'The item "{name[4:] if name.startswith('bad_') else name}" is expired and has an expired date: {expiry_date}.'}, status=400)
+            
             if name.startswith("bad_"):
                     Notification.objects.create(message=f'The item "{name[4:]}" is an defective piece and should no be shipped')
                     return JsonResponse({'error': f'he item "{name}" has an defective piece and should no be shipped'}, status=400)
 
             # Check if the item is expired
-            today = datetime.today().date()
-            if expiry_date < today:
-                Notification.objects.create(message=f'The item "{name}" has an expired date: {expiry_date}.')
-                return JsonResponse({'error': f'The item "{name}" has an expired date: {expiry_date}.'}, status=400)
+            
 
             # Check if the item already exists
             item = Item.objects.filter(name=name).first()
@@ -78,9 +85,40 @@ def fetch_items(request):
     items = Item.objects.all().values('id', 'name', 'quantity', 'expiry_date')
     return JsonResponse(list(items), safe=False)
 
+def compare_items(needed_items, actual_items):
+    # Initialize results
+    missing_items = {}
+    incorrect_items = {}
+    extra_items = {}
+
+    # Compare needed_items with actual_items
+    for item, needed_quantity in needed_items.items():
+        actual_quantity = actual_items.get(item, 0)
+        
+        if actual_quantity == 0:
+            # Item is completely missing
+            missing_items[item] = needed_quantity
+        elif actual_quantity < needed_quantity:
+            # Item is partially missing
+            missing_items[item] = needed_quantity - actual_quantity
+        elif actual_quantity > needed_quantity:
+            # Item has extra quantity
+            incorrect_items[item] = actual_quantity - needed_quantity
+
+    # Check for extra items in actual_items not present in needed_items
+    for item, actual_quantity in actual_items.items():
+        if item not in needed_items:
+            extra_items[item] = actual_quantity
+
+    return {
+        "missing_items": missing_items,
+        "incorrect_items": incorrect_items,
+        "extra_items": extra_items
+    }
+
 def item_list(request):
     items = Item.objects.all()
-    unmatched_items = []
+    incorrect_items = []
     extra_items = []
     missing_items = []
 
@@ -96,13 +134,14 @@ def item_list(request):
                 return redirect('item_list')
 
         if 'check_bill' in request.POST:
+            print(Item.objects)
             raw_input = request.POST.get('items', '').strip()  # Get input and strip whitespace
 
             if not raw_input:  # Check if the input is empty
-                messages.error(request, 'Input cannot be empty. Use the format "name:quantity,name:quantity".')
+                messages.warning(request, 'Please Check Your Input and try again')
             else:
                 missing_items = []  # To track missing items
-                incorrect_quantities = []  # To track items with incorrect quantities
+                incorrect_items = []  # To track items with incorrect quantities
                 extra_items = []  # To track extra items
                 all_match = True  # Assume all items match initially
 
@@ -117,68 +156,37 @@ def item_list(request):
                     # Pre-fetch all items from the database into a dictionary for efficiency
                     actual_items = {item.name: item.quantity for item in items}
 
-                    # Check for missing items or incorrect quantities
-                    for name, quantity in needed_items.items():  # From "things needed"
-                        if name not in actual_items:
-                            missing_items.append(f"{name}: needed {quantity}, got 0")
-                            all_match = False
-                        elif actual_items[name] != quantity:
-                            actual_quantity = actual_items[name]
-                            difference = actual_quantity - quantity
-                            incorrect_quantities.append(
-                                f"{name}: needed {quantity}, got {actual_quantity} (difference: {difference})"
-                            )
-                            all_match = False
 
-                    # Check for extra items in the database
-                    needed_item_names = set(needed_items.keys())
-                    for name, quantity in actual_items.items():  # From "things we got"
-                        if name not in needed_item_names:
-                            extra_items.append(f"{name}: extra with quantity {quantity}")
-                            all_match = False
+                    result = compare_items(needed_items, actual_items)
 
-                    # Handle the results of the check
-                    if all_match:
-                        messages.success(request, 'All items match correctly with the table.')
-                    else:
-                        if missing_items:
-                            messages.error(
-                                request,
-                                f"Missing items:\n" + "\n".join(missing_items)
-                            )
-                        if incorrect_quantities:
-                            messages.error(
-                                request,
-                                f"Items with incorrect quantities:\n" + "\n".join(incorrect_quantities)
-                            )
-                        if extra_items:
-                            messages.error(
-                                request,
-                                f"Extra items in the table:\n" + "\n".join(extra_items)
-                            )
-                        if missing_items or incorrect_quantities or extra_items:
-                            messages.error(
-                                request,
-                                f"Summary:\n" +
-                                (f"Missing items:\n" + "\n".join(missing_items) + "\n" if missing_items else "") +
-                                (f"Items with incorrect quantities:\n" + "\n".join(incorrect_quantities) + "\n" if incorrect_quantities else "") +
-                                (f"Extra items in the table:\n" + "\n".join(extra_items) if extra_items else "")
-                            )
+
+                    for name, quantity in result['missing_items'].items():
+                        missing_items.append(f"{quantity} ({name}), is missing ")
+                        all_match = False
+
+                    for name, quantity in result['incorrect_items'].items():
+                        incorrect_items.append(f"{name}: needed {needed_items[name]}, got {actual_items[name]} (extra: {quantity})")
+                        all_match = False
+
+                    for name, quantity in result['extra_items'].items():
+                        extra_items.append(f"{quantity} ({name}) is extra ")
+                        all_match = False
+ 
+                    print("missing item=",missing_items)
+                    print("incorrect item=",incorrect_items)
+                    print("extra item=",extra_items)       
+                    
 
                 except ValueError:
                     messages.error(request, 'Invalid input format. Use "name:quantity,name:quantity".')
-
-
-
-
-
-
 
     form = ItemForm()
     return render(request, 'billing/item_list.html', {
         'items': items,
         'form': form,
-        'unmatched_items': unmatched_items,
         'missing_items': missing_items,
         'extra_items': extra_items,
+        'incorrect_quantities': incorrect_items,
     })
+
+

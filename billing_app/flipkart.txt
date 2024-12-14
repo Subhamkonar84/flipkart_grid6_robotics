@@ -1,0 +1,65 @@
+CREATE TABLE items (
+    id INT AUTO_INCREMENT PRIMARY KEY, 
+    timestamp DATETIME NOT NULL,
+    brand VARCHAR(255) NOT NULL,
+    expiry_date DATE NOT NULL,
+    count INT NOT NULL,
+    expired ENUM('NA', 'yes') DEFAULT 'NA',
+    expected_life_span INT DEFAULT NULL
+);
+
+
+DELIMITER //
+
+CREATE TRIGGER update_inventory BEFORE INSERT ON inventory
+FOR EACH ROW
+BEGIN
+    -- Calculate expected_life_span
+    SET NEW.expected_life_span = DATEDIFF(NEW.expiry_date, CURDATE());
+
+    -- Determine if expired
+    IF NEW.expiry_date < CURDATE() THEN
+        SET NEW.expired = 'yes';
+    ELSE
+        SET NEW.expired = 'NA';
+    END IF;
+END;
+//
+
+DELIMITER ;
+
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-11-29T05:12:01', 'clinic_plus_shampoo', '2025-01-15', 50);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'colgate_toothpaste', '2025-01-15', 50);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'dettol_soap', '2025-02-16', 90);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'exo_bar', '2025-11-01', 60);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'henko_soap', '2024-12-30', 100);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'kissan_jam', '2025-01-30', 80);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'maggie_ketup', '2025-05-05', 70);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'surf_excel', '2025-12-15', 40);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'tata_salt', '2025-09-27', 30);
+INSERT INTO items (timestamp, brand, expiry_date, count) 
+VALUES ('2024-12-11T05:12:01', 'unibic_cookies', '2025-02-21', 20);
+
+CREATE TABLE fresh (
+    id INT AUTO_INCREMENT PRIMARY KEY, 
+    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    product VARCHAR(255) NOT NULL,
+    freshness INT NOT NULL,
+    expected_life_span INT NOT NULL 
+);
+
+INSERT INTO fresh (product, freshness, expected_life_span)
+VALUES ('potato', 5, 12);
+INSERT INTO fresh (product, freshness, expected_life_span)
+VALUES ('bad_potato', 0, 0);
+
+python3  detect2.py --weights best3.pt --conf 0.9 --img-size 640 --source 0
