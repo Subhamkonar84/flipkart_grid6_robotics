@@ -313,6 +313,10 @@ Ensure the database schema is well-documented, with clear instructions on how to
   - Can be implemented in stores with minimal adjustments, addressing billing and packing challenges.
 
 ---
+### output
+![working](live_working.png)
+![live page](frontend_live_link.png)
+
 
 ### Contact Information
 
